@@ -91,7 +91,7 @@ class Concert(object):
             self.driver.quit()
         # 选择了Chrome浏览器，并成功加载cookie，设置不载入图片，提高刷新效率
         options = webdriver.ChromeOptions()
-        options.add_experimental_option("prefs", {"profile.managed_default_content_settings.images":2})
+        # options.add_experimental_option("prefs", {"profile.managed_default_content_settings.images":2})
         self.driver = webdriver.Chrome(options=options)
         self.driver.get(self.target_url)
         self.set_cookie()
@@ -112,7 +112,6 @@ class Concert(object):
             self.status = 0
             self.driver.quit()
     
-        
     def enter_concert(self):
         self.login()
         self.check_login()
@@ -128,11 +127,11 @@ class Concert(object):
         # while self.driver.title.find('确认订单') == -1:  # 如果跳转到了确认界面就算这步成功了，否则继续执行此步
         self.num += 1 # 记录抢票轮数
         self.choose_date()
-        session_em, price_em = self.order_select()
-        self.choose_session(session_em=session_em)
-        self.choose_price(price_em=price_em)
+
+        perform_em, order_em = self.find_selector_elements()
+        self.choose_perform(perform_em)
+        self.choose_order(order_em)
             
-    
     def choose_date(self):
         if self.date != 0: # 如果需要选择日期
             calendar = WebDriverWait(self.driver, self.total_wait_time, self.refresh_wait_time).until(
@@ -141,28 +140,34 @@ class Concert(object):
             # datelist = calendar.find_elements(by=By.CSS_SELECTOR, value="[class='wh_top_change']")
             # datelist = calendar.find_elements_by_css_selector("[class='wh_content_item']") # 找到能选择的日期
             datelist = datelist[7:] # 跳过前面7个表示周一~周日的元素
-            datelist[self.date - 1].click() # 选择对应日期
+            if not datelist:
+                return  # 不用选日期
+            try:
+                datelist[self.date - 1].click() # 选择对应日期
+            except:
+                print("日期选择异常，请检查")
 
-    def order_select(self):
+    def find_selector_elements(self):
         selects = self.driver.find_elements(by=By.CLASS_NAME, value='perform__order__select')
         # print('可选区域数量为：{}'.format(len(selects)))
         for item in selects:
             if item.find_element(by=By.CLASS_NAME, value='select_left').text == '场次':
-                session = item
-                # print('\t场次定位成功')
+                perform = item
+                print('\t场次定位成功')
             elif item.find_element(by=By.CLASS_NAME, value='select_left').text == '票档':
-                price = item
-                # print('\t票档定位成功')
-        return session, price
+                order = item
+                print('\t票档定位成功')
+        return perform, order
 
-    def choose_session(self, session_em):
-        session_list = session_em.find_elements(by=By.CLASS_NAME, value='select_right_list_item')
-        print('可选场次数量为：{}'.format(len(session_list)))
-        if len(self.session) == 1:
-            j = session_list[self.session[0] - 1].click()
+    def choose_perform(self, perform_em):
+        # perform_em = self.driver.find_element(by=By.CLASS_NAME, value='perform__order__select__performs')
+        perform_list = perform_em.find_elements(by=By.CLASS_NAME, value='select_right_list_item')
+        print('可选场次数量为：{}'.format(len(perform_list)))
+        if len(perform_list) == 1:
+            j = perform_list[0].click()
         else:
             for i in self.session:  # 根据优先级选择一个可行场次
-                j = session_list[i - 1]
+                j = perform_list[i - 1]
                 k = self.isClassPresent(j, 'presell', True)
                 if k:  # 如果找到了带presell的类
                     if k.text == '无票':
@@ -176,11 +181,11 @@ class Concert(object):
                     print("choose_session done")
                     break
 
-    def choose_price(self, price_em):
-        price_list = price_em.find_elements(by=By.CLASS_NAME, value='select_right_list_item')
+    def choose_order(self, order_em):
+        price_list = order_em.find_elements(by=By.CLASS_NAME, value='select_right_list_item')
         print('可选票档数量为：{}'.format(len(price_list)))
-        if len(self.price) == 1:
-            j = price_list[self.price[0] - 1].click()
+        if len(price_list) == 1:
+            j = price_list[0].click()
         else:
             for i in self.price:
                 j = price_list[i - 1]
@@ -192,8 +197,8 @@ class Concert(object):
                     print("choose_price done")
                     break
 
-    def buy(self):
-        buybutton = self.driver.find_element(by=By.CLASS_NAME, value='buybtn')
+    def click_buy(self):
+        buybutton = self.driver.find_element(by=By.CLASS_NAME, value='buy-link')
         buybutton_text = buybutton.text
         print(buybutton_text)
         
@@ -211,7 +216,7 @@ class Concert(object):
             self.driver.refresh()
             print('---尚未开售，刷新等待---')
 
-        elif buybutton_text == "立即预订":
+        elif buybutton_text == "不，立即预订":
             add_ticket()
             buybutton.click()
             self.status = 3
@@ -221,8 +226,8 @@ class Concert(object):
             buybutton.click()
             self.status = 4
 
-        elif buybutton_text == "选座购买":  # 选座购买暂时无法完成自动化
-            # buybutton.click()
+        elif buybutton_text == "不，选座购买":  # 选座购买暂时无法完成自动化
+            buybutton.click()
             self.status = 5
             print("###请自行选择位置和票价###")
 
@@ -279,14 +284,14 @@ class Concert(object):
 if __name__ == '__main__':
     try:
         config = {
-            "session": [1],  # 场次
-            "price": [1, 3],  # 票档
-            "date": 1,  # 日期 0:不需要选择日期, 1:需要选择日期
+            "session": [2],  # 场次
+            "price": [8],  # 票档
+            "date": 0,  # 日期 0:不需要选择日期, 1:需要选择日期
             "real_name": [],  # 实名信息序号
             "nick_name": "麦子4jGdd",  # 用户昵称
-            "ticket_num": 2,  #票数
+            "ticket_num": 1,  #票数
             "damai_url": "https://www.damai.cn/",  # 官网网址
-            "target_url": "https://detail.damai.cn/item.htm?spm=a2oeg.search_category.0.0.47a64d1569dzBI&id=640417691473",  # 目标网址
+            "target_url": "https://detail.damai.cn/item.htm?spm=a2oeg.search_category.0.0.6d5d14d2YQZgwa&id=705490988746",  # 目标网址
         }
         con = Concert(
             config['session'], 
@@ -302,6 +307,7 @@ if __name__ == '__main__':
         raise Exception(f"***错误：初始化失败，请检查配置*** {e}")
     con.enter_concert()
     con.choose_ticket()
+    con.click_buy()
     # if con.type == 1:  # detail.damai.cn
     #     con.choose_ticket_1()
     #     con.check_order_1()
